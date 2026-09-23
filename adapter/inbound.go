@@ -63,6 +63,7 @@ type InboundContext struct {
 
 	Protocol     string
 	Domain       string
+	ALPN         []string
 	Client       string
 	SniffContext any
 	SnifferNames []string

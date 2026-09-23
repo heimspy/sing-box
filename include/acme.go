@@ -1,4 +1,4 @@
-//go:build with_acme
+//go:build !with_heimspy && with_acme
 
 package include
 

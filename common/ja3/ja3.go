@@ -22,6 +22,7 @@ type ClientHello struct {
 	Versions            []uint16
 	SignatureAlgorithms []uint16
 	ServerName          string
+	ALPN                []string
 	ja3ByteString       []byte
 	ja3Hash             string
 }

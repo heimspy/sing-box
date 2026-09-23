@@ -1,4 +1,4 @@
-//go:build with_v2ray_api
+//go:build !with_heimspy && with_v2ray_api
 
 package include
 

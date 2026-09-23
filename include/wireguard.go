@@ -1,4 +1,4 @@
-//go:build with_wireguard
+//go:build !with_heimspy && with_wireguard
 
 package include
 

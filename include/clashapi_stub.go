@@ -1,4 +1,4 @@
-//go:build !with_clash_api
+//go:build !with_heimspy && !with_clash_api
 
 package include
 

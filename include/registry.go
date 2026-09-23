@@ -1,3 +1,5 @@
+//go:build !with_heimspy
+
 package include
 
 import (
@@ -39,6 +41,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
 	"github.com/sagernet/sing-box/service/api"
+	"github.com/sagernet/sing-box/service/heimspyinspector"
 	originca "github.com/sagernet/sing-box/service/origin_ca"
 	"github.com/sagernet/sing-box/service/resolved"
 	"github.com/sagernet/sing-box/service/ssmapi"
@@ -60,6 +63,7 @@ func InboundRegistry() *inbound.Registry {
 	socks.RegisterInbound(registry)
 	http.RegisterInbound(registry)
 	mixed.RegisterInbound(registry)
+	inbound.Register[option.SocksInboundOptions](registry, "heimspy-mixed", newProxyInbound)
 
 	shadowsocks.RegisterInbound(registry)
 	snell.RegisterInbound(registry)
@@ -81,6 +85,7 @@ func OutboundRegistry() *outbound.Registry {
 	registry := outbound.NewRegistry()
 
 	direct.RegisterOutbound(registry)
+	outbound.Register[inspectOptions](registry, "heimspy-inspect", newInspectOutbound)
 	bridge.RegisterOutbound(registry)
 
 	block.RegisterOutbound(registry)
@@ -142,6 +147,7 @@ func DNSTransportRegistry() *dns.TransportRegistry {
 
 func ServiceRegistry() *service.Registry {
 	registry := service.NewRegistry()
+	heimspyinspector.Register(registry)
 
 	api.RegisterService(registry)
 	resolved.RegisterService(registry)

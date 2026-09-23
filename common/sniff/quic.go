@@ -307,6 +307,7 @@ find:
 		return E.Cause1(ErrNeedMoreData, err)
 	}
 	metadata.Domain = fingerprint.ServerName
+	metadata.ALPN = fingerprint.ALPN
 	for metadata.Client == "" {
 		if len(frameTypeList) == 1 {
 			metadata.Client = C.ClientFirefox

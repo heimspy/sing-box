@@ -1,4 +1,4 @@
-//go:build !with_openvpn
+//go:build !with_heimspy && !with_openvpn
 
 package include
 

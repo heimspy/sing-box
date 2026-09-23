@@ -1,4 +1,4 @@
-//go:build !with_ocm
+//go:build !with_heimspy && !with_ocm
 
 package include
 

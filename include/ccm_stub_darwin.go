@@ -1,4 +1,4 @@
-//go:build with_ccm && darwin && !cgo
+//go:build !with_heimspy && with_ccm && darwin && !cgo
 
 package include
 

@@ -1,4 +1,4 @@
-//go:build !with_dhcp
+//go:build !with_heimspy && !with_dhcp
 
 package include
 

@@ -1,4 +1,4 @@
-//go:build !with_openconnect
+//go:build !with_heimspy && !with_openconnect
 
 package include
 

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
 	runtimeDebug "runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -16,6 +18,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/service/heimspyinspector"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
@@ -155,22 +158,39 @@ func create(options option.Options) (*box.Box, context.CancelFunc, error) {
 	}()
 	startCtx, finishStart := context.WithCancel(context.Background())
 	go func() {
-		_, loaded := <-osSignals
-		if loaded {
-			cancel()
-			closeMonitor(startCtx)
+		select {
+		case _, loaded := <-osSignals:
+			if !loaded {
+				return
+			}
+		case <-ctx.Done():
 		}
+		cancel()
+		closeMonitor(startCtx)
 	}()
 	err = instance.Start()
 	finishStart()
 	if err != nil {
 		cancel()
+		// Release partially started listeners and TUN resources as well.
+		closeCtx, closed := context.WithCancel(context.Background())
+		go closeMonitor(closeCtx)
+		_ = instance.Close()
+		closed()
 		return nil, nil, E.Cause(err, "start service")
 	}
 	return instance, cancel, nil
 }
 
 func run() error {
+	ctx, stop, err := helperContext(globalCtx)
+	if err != nil {
+		return err
+	}
+	previousCtx := globalCtx
+	globalCtx = ctx
+	defer func() { stop(); globalCtx = previousCtx }()
+
 	optionsList, err := readConfig()
 	if err != nil {
 		return err
@@ -178,6 +198,23 @@ func run() error {
 	options, err := mergeOptionsList(optionsList)
 	if err != nil {
 		return err
+	}
+	hasInspector := false
+	for _, item := range options.Services {
+		if item.Type == heimspyinspector.Type {
+			hasInspector = true
+		}
+	}
+	if hasInspector && slices.Contains(configPaths, "stdin") {
+		return errors.New("heimspy-inspector reserves stdin for IPC; use a configuration file")
+	}
+	if hasInspector && options.Log != nil && options.Log.Output == "stdout" {
+		return errors.New("heimspy-inspector reserves stdout for IPC; use stderr for logs")
+	}
+	if hasInspector {
+		globalCtx = heimspyinspector.WithControl(ctx, os.Stdin, os.Stdout, stop)
+	} else {
+		watchHelperInput(stop)
 	}
 	err = runInUserNamespaceIfNeeded(options, optionsList)
 	if err != nil {
@@ -193,8 +230,17 @@ func run() error {
 		}
 		runtimeDebug.FreeOSMemory()
 		for {
-			osSignal := <-osSignals
+			var osSignal os.Signal
+			select {
+			case osSignal = <-osSignals:
+			case <-ctx.Done():
+				osSignal = syscall.SIGTERM
+			}
 			if osSignal == syscall.SIGHUP {
+				if hasInspector {
+					log.Warn("heimspy-inspector IPC cannot be reloaded; restart the owning process")
+					continue
+				}
 				err = check()
 				if err != nil {
 					log.Error(E.Cause(err, "reload service"))

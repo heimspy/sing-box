@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !with_heimspy && !windows
 
 package main
 

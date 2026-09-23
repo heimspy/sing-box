@@ -1,4 +1,4 @@
-//go:build !with_cloudflared
+//go:build !with_heimspy && !with_cloudflared
 
 package include
 

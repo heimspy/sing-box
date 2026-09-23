@@ -195,6 +195,18 @@ func (j *ClientHello) parseExtensions(exs []byte) error {
 		sex := exs[extensionHeaderLen : extensionHeaderLen+int(exLen)]
 
 		switch exType {
+		case 16: // application_layer_protocol_negotiation
+			if len(sex) < 3 || int(binary.BigEndian.Uint16(sex)) != len(sex)-2 {
+				return &ParseError{LengthErr, 21}
+			}
+			for protocols := sex[2:]; len(protocols) != 0; {
+				length := int(protocols[0])
+				if length == 0 || length > len(protocols)-1 {
+					return &ParseError{LengthErr, 21}
+				}
+				j.ALPN = append(j.ALPN, string(protocols[1:1+length]))
+				protocols = protocols[1+length:]
+			}
 		case sniExtensionType: // Extensions: server_name
 
 			// Check if we can decode the next fields
