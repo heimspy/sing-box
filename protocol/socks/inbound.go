@@ -3,6 +3,8 @@ package socks
 import (
 	std_bufio "bufio"
 	"context"
+	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -13,9 +15,13 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing/common/canceler"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/protocol/socks"
 )
@@ -97,6 +103,7 @@ func (h *Inbound) newUserConnection(ctx context.Context, conn net.Conn, metadata
 }
 
 func (h *Inbound) streamUserPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+	conn = bindPacketClient(conn)
 	metadata.Inbound = h.Tag()
 	metadata.InboundType = h.Type()
 	user, loaded := auth.UserFromContext[string](ctx)
@@ -116,4 +123,38 @@ func (h *Inbound) streamUserPacketConnection(ctx context.Context, conn N.PacketC
 		h.logger.InfoContext(ctx, "[", user, "] inbound packet connection to ", metadata.Destination)
 	}
 	h.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
+}
+
+// The handshake has already read the first UDP packet. Bind replies to that
+// client's address before routing starts concurrent reads and writes: sing's
+// serverPacketConn otherwise rewrites its unsynchronized remoteAddr on every read.
+// Preserve the cached first packet, timeout accounting and TCP ownership.
+func bindPacketClient(conn N.PacketConn) N.PacketConn {
+	switch c := conn.(type) {
+	case *bufio.CachedPacketConn:
+		c.PacketConn = bindPacketClient(c.PacketConn)
+	case *canceler.TimeoutPacketConn:
+		c.PacketConn = bindPacketClient(c.PacketConn)
+	case *canceler.TimerPacketConn:
+		c.PacketConn = bindPacketClient(c.PacketConn)
+	case *socks.AssociatePacketConn:
+		server, ok := c.Upstream().(interface {
+			net.Conn
+			common.WithUpstream
+		})
+		if !ok {
+			slog.Debug("SOCKS UDP client binding unavailable", "upstream", fmt.Sprintf("%T", c.Upstream()))
+			return conn
+		}
+		packets, ok := server.Upstream().(net.PacketConn)
+		if !ok {
+			slog.Debug("SOCKS UDP client binding unavailable", "upstream", fmt.Sprintf("%T", c.Upstream()))
+			return conn
+		}
+		bound := bufio.NewBindPacketConn(packets, M.SocksaddrFromNet(server.RemoteAddr()).UDPAddr())
+		return socks.NewAssociatePacketConn(bound, M.Socksaddr{}, c)
+	default:
+		slog.Debug("SOCKS UDP client binding skipped unknown wrapper", "type", fmt.Sprintf("%T", conn))
+	}
+	return conn
 }
